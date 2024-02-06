@@ -1,7 +1,14 @@
+import collections
 from datasets import load_dataset
 from transformers import AutoTokenizer, DataCollatorWithPadding, AutoModelForSequenceClassification, TrainingArguments, Trainer
 import evaluate
 import numpy as np
+
+
+MyDataset = collections.namedtuple("MyDataset", 
+    "name examples id2label".split())
+
+
 
 ACCURACY = evaluate.load('accuracy')
 
@@ -15,25 +22,23 @@ def compute_metrics(eval_pred):
 def preprocess_function(examples, tokenizer):
     return tokenizer(examples["text"], truncation=True)
 
+def train_and_eval_distillbert(dataset, tokenizer):
 
-def main():
-
-    imdb = load_dataset('imdb')
-    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
-    tokenized_imdb = imdb.map(lambda x: preprocess_function(x, tokenizer),
-                              batched=True)
+    
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-    id2label = {0: "NEGATIVE", 1: "POSITIVE"}
-    label2id = {"NEGATIVE": 0, "POSITIVE": 1}
 
+
+    num_labels = len(dataset.id2label)
+    label2id = {l:i for i, l in dataset.id2label.items()}
     model = AutoModelForSequenceClassification.from_pretrained(
         "distilbert-base-uncased",
-        num_labels=2,
-        id2label=id2label,
+        num_labels=num_labels,
+        id2label=dataset.id2label,
         label2id=label2id)
 
+    run_name = f'{dataset.name}_distillbert'
     training_args = TrainingArguments(
-        output_dir="my_awesome_model",
+        output_dir=run_name,
         learning_rate=2e-5,
         per_device_train_batch_size=16,
         per_device_eval_batch_size=16,
@@ -48,15 +53,30 @@ def main():
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=tokenized_imdb["train"],
-        eval_dataset=tokenized_imdb["test"],
-        tokenizer=tokenizer,
+        train_dataset=dataset.examples["train"],
+        eval_dataset=dataset.examples["test"],
+        tokenizer=tokenizer, # Why is the tokenizer needed?
         data_collator=data_collator,
         compute_metrics=compute_metrics,
     )
 
     trainer.train()
 
+
+
+def main():
+
+    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
+
+
+    # Specific to imdb dataset
+    imdb = load_dataset('imdb')
+    tokenized_imdb = imdb.map(lambda x: preprocess_function(x, tokenizer),
+                              batched=True)
+    id2label = {0: "NEGATIVE", 1: "POSITIVE"}
+    imdb_dataset = MyDataset("imdb", tokenized_imdb, id2label)
+
+    train_and_eval_distillbert(imdb_dataset, tokenizer)
 
 if __name__ == "__main__":
     main()

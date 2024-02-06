@@ -3,14 +3,23 @@ import collections
 import glob
 import gzip
 from interval import Interval
+import io
 import json
 import os
 import stanza
+import pickle
+import pyarrow as pa
+import yaml
+
+from datasets import dataset_dict, Dataset
 
 import iclr_lib
 
 parser = argparse.ArgumentParser(description="")
 parser.add_argument("-d", "--data_dir", default="data/", type=str, help="")
+
+with open('schema.yml', "r") as f:
+    SCHEMA = yaml.safe_load(io.StringIO(f.read()))
 
 
 # ==== DISAPERE
@@ -40,9 +49,21 @@ def get_disapere_labels(sent):
     )
     return labels
 
+def build_dataset(train, dev, test, task):
+    label2id = {label:i for i, label in enumerate(SCHEMA['labels'][task])}
+    dataset_dict_builder = {}
+    for subset, lines in zip("train dev test".split(), [train, dev, test]):
+        dataset_dict_builder[subset] = Dataset(
+        pa.Table.from_arrays([
+            [x['text'] for x in lines],
+            [label2id[x['label']] for x in lines]], names = ['text', 'label']))
+    return dataset_dict.DatasetDict(dataset_dict_builder), label2id
+
+
 
 def preprocess_disapere(data_dir):
 
+    lines_by_subset = {}
     for subset in "train dev test".split():
         lines = collections.defaultdict(list)
         for filename in glob.glob(f"{data_dir}/raw/disapere/{subset}/*.json"):
@@ -59,11 +80,19 @@ def preprocess_disapere(data_dir):
                                 "label": label,
                             }
                         )
-        for task, examples in lines.items():
-            output_dir = f"{data_dir}/labeled/{task}/{subset}/"
-            os.makedirs(output_dir, exist_ok=True)
-            with open(f"{output_dir}/disapere.jsonl", "w") as f:
-                f.write("\n".join(json.dumps(e) for e in examples))
+        lines_by_subset[subset] = lines
+
+    for task in lines_by_subset["train"]:
+        dataset = build_dataset(
+            lines_by_subset['train'][task],
+            lines_by_subset['dev'][task],
+            lines_by_subset['test'][task],
+            task
+        )
+        output_dir = f"{data_dir}/labeled/{task}/"
+        os.makedirs(output_dir, exist_ok=True)
+        with open(f"{output_dir}/disapere.pkl", "wb") as f:
+            pickle.dump(dataset, f)
 
 
 # ==== AMPERE

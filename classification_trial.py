@@ -27,7 +27,7 @@ def train_and_eval_distillbert(dataset, tokenizer):
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
     num_labels = len(dataset.label2id)
-    id2label = {i:l for l, i in dataset.label2id.items()}
+    id2label = {i: l for l, i in dataset.label2id.items()}
     model = AutoModelForSequenceClassification.from_pretrained(
         "distilbert-base-uncased",
         num_labels=num_labels,
@@ -65,7 +65,7 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
 
-    with open('data/labeled/asp/disapere.pkl', 'rb') as f:
+    with open('data/labeled/asp.pkl', 'rb') as f:
         imdb, label2id = pickle.load(f)
 
     # Specific to imdb dataset
